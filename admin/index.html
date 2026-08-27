@@ -68,7 +68,7 @@
 
     <script>
       const config = { owner: 'tugbabdal', repo: 'tugbabdal.github.io', branch: 'master', postsDirectory: '_posts' };
-      const state = { token: sessionStorage.getItem('blog-admin-token'), posts: [], current: null };
+      const state = { token: localStorage.getItem('blog-admin-token'), posts: [], current: null };
       const $ = (id) => document.getElementById(id);
       const views = ['login-view', 'dashboard-view', 'editor-view'];
       const api = (path, options = {}) => fetch(`https://api.github.com${path}`, {
@@ -134,12 +134,12 @@
       async function login() {
         state.token = $('token').value.trim(); clearMessage('login-message');
         if (!state.token) { message('login-message', 'Lütfen erişim belirtecinizi girin.', 'alert-error'); return; }
-        try { const user = await api('/user'); sessionStorage.setItem('blog-admin-token', state.token); $('user-name').textContent = `Giriş yapan: ${user.login}`; showView('dashboard-view'); await loadPosts(); }
+        try { const user = await api('/user'); localStorage.setItem('blog-admin-token', state.token); $('user-name').textContent = `Giriş yapan: ${user.login}`; showView('dashboard-view'); await loadPosts(); }
         catch (error) { state.token = null; message('login-message', error.message, 'alert-error'); }
       }
       $('login').addEventListener('click', login); $('new-post').addEventListener('click', () => openEditor()); $('back').addEventListener('click', () => showView('dashboard-view'));
       $('post-form').addEventListener('submit', savePost); $('delete-post').addEventListener('click', deletePost);
-      $('logout').addEventListener('click', () => { sessionStorage.removeItem('blog-admin-token'); state.token = null; $('token').value = ''; showView('login-view'); });
+      $('logout').addEventListener('click', () => { loclStorage.removeItem('blog-admin-token'); state.token = null; $('token').value = ''; showView('login-view'); });
       if (state.token) { $('token').value = state.token; login(); }
     </script>
   </body>
