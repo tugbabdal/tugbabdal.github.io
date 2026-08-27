@@ -139,7 +139,7 @@
       }
       $('login').addEventListener('click', login); $('new-post').addEventListener('click', () => openEditor()); $('back').addEventListener('click', () => showView('dashboard-view'));
       $('post-form').addEventListener('submit', savePost); $('delete-post').addEventListener('click', deletePost);
-      $('logout').addEventListener('click', () => { loclStorage.removeItem('blog-admin-token'); state.token = null; $('token').value = ''; showView('login-view'); });
+      $('logout').addEventListener('click', () => { localStorage.removeItem('blog-admin-token'); state.token = null; $('token').value = ''; showView('login-view'); });
       if (state.token) { $('token').value = state.token; login(); }
     </script>
   </body>
