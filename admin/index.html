@@ -1,146 +1,26 @@
 <!doctype html>
-<html lang="tr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex,nofollow" />
-    <title>Blog Yönetimi</title>
-    <link rel="stylesheet" href="/assets/themes/twitter/bootstrap/css/bootstrap.2.2.2.min.css" />
-    <style>
-      body { background: #f5f5f5; padding: 32px 0; }
-      .app { background: #fff; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.08); padding: 28px; }
-      .toolbar { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 20px; }
-      .toolbar h1 { margin: 0; font-size: 26px; }
-      #post-list .post { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #eee; }
-      #post-list .post:first-child { border-top: 0; }
-      .post-title { flex: 1; font-weight: bold; }
-      .post-date { color: #777; min-width: 96px; }
-      textarea { box-sizing: border-box; min-height: 310px; width: 100%; font-family: ui-monospace, Consolas, monospace; }
-      .form-actions { display: flex; gap: 8px; align-items: center; }
-      .help { color: #666; font-size: 13px; }
-      .hidden { display: none !important; }
-      .alert { margin-top: 16px; }
-      @media (max-width: 600px) { body { padding: 0; } .app { border: 0; box-shadow: none; } .post-date { display: none; } }
-    </style>
-  </head>
-  <body>
-    <main class="container app">
-      <section id="login-view">
-        <h1>Blog Yönetimi</h1>
-        <p>Yazılarınızı GitHub üzerinden yönetin. Erişim belirteci yalnızca bu tarayıcı oturumunda tutulur ve hiçbir zaman siteye kaydedilmez.</p>
-        <label for="token">GitHub fine-grained personal access token</label>
-        <input id="token" class="input-xxlarge" type="password" autocomplete="off" />
-        <p class="help">Belirteçte <strong>tugbadal/tugbadal.github.io</strong> deposu için <strong>Contents: Read and write</strong> izni bulunmalıdır.</p>
-        <button id="login" class="btn btn-primary">Giriş yap</button>
-        <div id="login-message" class="alert hidden" role="status"></div>
-      </section>
-
-      <section id="dashboard-view" class="hidden">
-        <div class="toolbar">
-          <div><h1>Yazılar</h1><span id="user-name" class="help"></span></div>
-          <div><button id="new-post" class="btn btn-primary">Yeni yazı</button> <button id="logout" class="btn">Çıkış</button></div>
-        </div>
-        <div id="dashboard-message" class="alert hidden" role="status"></div>
-        <div id="post-list"><p>Yazılar yükleniyor…</p></div>
-      </section>
-
-      <section id="editor-view" class="hidden">
-        <div class="toolbar"><h1 id="editor-heading">Yeni yazı</h1><button id="back" class="btn">Listeye dön</button></div>
-        <form id="post-form">
-          <label for="title">Başlık</label>
-          <input id="title" class="input-xxlarge" required />
-          <label for="date">Tarih</label>
-          <input id="date" type="date" required />
-          <label for="categories">Kategori</label>
-          <input id="categories" class="input-xxlarge" placeholder="Örn. lessons" />
-          <label for="tags">Etiketler</label>
-          <input id="tags" class="input-xxlarge" placeholder="Virgülle ayırın: jekyll, başlangıç" />
-          <label for="body">İçerik</label>
-          <textarea id="body" required placeholder="Yazınızı Markdown olarak yazın."></textarea>
-          <div class="form-actions">
-            <button class="btn btn-primary" type="submit">Yayınla</button>
-            <button id="delete-post" class="btn btn-danger hidden" type="button">Yazıyı sil</button>
-            <span id="editor-message" class="help" role="status"></span>
-          </div>
-        </form>
-      </section>
-    </main>
-
-    <script>
-      const config = { owner: 'tugbabdal', repo: 'tugbabdal.github.io', branch: 'master', postsDirectory: '_posts' };
-      const state = { token: localStorage.getItem('blog-admin-token'), posts: [], current: null };
-      const $ = (id) => document.getElementById(id);
-      const views = ['login-view', 'dashboard-view', 'editor-view'];
-      const api = (path, options = {}) => fetch(`https://api.github.com${path}`, {
-        ...options,
-        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${state.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...(options.headers || {}) }
-      }).then(async r => { const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.message || 'GitHub isteği başarısız oldu.'); return data; });
-      const encode = (text) => btoa(unescape(encodeURIComponent(text)));
-      const decode = (text) => decodeURIComponent(escape(atob(text.replace(/\n/g, ''))));
-      const slugify = (value) => value.toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'yeni-yazi';
-      const escapeHtml = (value) => value.replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[char]);
-      function showView(name) { views.forEach(id => $(id).classList.toggle('hidden', id !== name)); }
-      function message(id, text, kind = 'alert-info') { const node = $(id); node.textContent = text; node.className = `alert ${kind}`; }
-      function clearMessage(id) { $(id).className = 'alert hidden'; }
-      function parsePost(path, text, sha) {
-        const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
-        const front = match ? match[1] : ''; const body = match ? match[2] : text;
-        const field = (name) => (front.match(new RegExp(`^${name}\\s*:\\s*(.*)$`, 'm')) || ['', ''])[1].trim().replace(/^['"]|['"]$/g, '');
-        return { path, sha, title: field('title') || path.split('/').pop(), date: field('date') || path.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '', categories: field('categories') || field('category'), tags: field('tags').replace(/^\[|\]$/g, '').split(',').map(x => x.trim()).filter(Boolean), body };
-      }
-      function serialize(post) {
-        const lines = ['---', 'layout: post', `title: "${post.title.replace(/"/g, '\\"')}"`, `date: ${post.date}`];
-        if (post.categories) lines.push(`categories: ${post.categories}`);
-        if (post.tags.length) lines.push(`tags: [${post.tags.map(tag => `"${tag.replace(/"/g, '\\"')}"`).join(', ')}]`);
-        return `${lines.join('\n')}\n---\n\n${post.body.trim()}\n`;
-      }
-      async function loadPosts() {
-        const tree = await api(`/repos/${config.owner}/${config.repo}/git/trees/${config.branch}?recursive=1`);
-        const entries = tree.tree.filter(item => item.type === 'blob' && item.path.startsWith(`${config.postsDirectory}/`) && /\.(md|markdown)$/i.test(item.path));
-        state.posts = await Promise.all(entries.map(async item => {
-          const file = await api(`/repos/${config.owner}/${config.repo}/contents/${item.path}?ref=${config.branch}`);
-          return parsePost(item.path, decode(file.content), file.sha);
-        }));
-        state.posts.sort((a, b) => b.date.localeCompare(a.date)); renderPosts();
-      }
-      function renderPosts() {
-        const list = $('post-list');
-        if (!state.posts.length) { list.innerHTML = '<p>Henüz yazı yok.</p>'; return; }
-        list.innerHTML = state.posts.map((post, i) => `<div class="post"><span class="post-title">${escapeHtml(post.title)}</span><span class="post-date">${escapeHtml(post.date)}</span><button class="btn" data-edit="${i}">Düzenle</button></div>`).join('');
-        list.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => openEditor(state.posts[button.dataset.edit])));
-      }
-      function openEditor(post = null) {
-        state.current = post;
-        $('editor-heading').textContent = post ? 'Yazıyı düzenle' : 'Yeni yazı';
-        $('title').value = post?.title || ''; $('date').value = post?.date || new Date().toISOString().slice(0, 10);
-        $('categories').value = post?.categories || ''; $('tags').value = post?.tags?.join(', ') || ''; $('body').value = post?.body || '';
-        $('delete-post').classList.toggle('hidden', !post); $('editor-message').textContent = ''; showView('editor-view');
-      }
-      async function savePost(event) {
-        event.preventDefault();
-        const post = { title: $('title').value.trim(), date: $('date').value, categories: $('categories').value.trim(), tags: $('tags').value.split(',').map(x => x.trim()).filter(Boolean), body: $('body').value };
-        const path = state.current?.path || `${config.postsDirectory}/${post.date}-${slugify(post.title)}.md`;
-        $('editor-message').textContent = 'GitHub’a kaydediliyor…';
-        await api(`/repos/${config.owner}/${config.repo}/contents/${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: `${state.current ? 'Update' : 'Create'} post: ${post.title}`, content: encode(serialize(post)), branch: config.branch, ...(state.current ? { sha: state.current.sha } : {}) }) });
-        $('editor-message').textContent = 'Kaydedildi. GitHub Pages kısa süre içinde yayına alacaktır.';
-        await loadPosts(); setTimeout(() => showView('dashboard-view'), 700);
-      }
-      async function deletePost() {
-        if (!state.current || !confirm(`“${state.current.title}” yazısı silinsin mi?`)) return;
-        $('editor-message').textContent = 'Siliniyor…';
-        await api(`/repos/${config.owner}/${config.repo}/contents/${state.current.path}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: `Delete post: ${state.current.title}`, sha: state.current.sha, branch: config.branch }) });
-        state.current = null; await loadPosts(); showView('dashboard-view');
-      }
-      async function login() {
-        state.token = $('token').value.trim(); clearMessage('login-message');
-        if (!state.token) { message('login-message', 'Lütfen erişim belirtecinizi girin.', 'alert-error'); return; }
-        try { const user = await api('/user'); localStorage.setItem('blog-admin-token', state.token); $('user-name').textContent = `Giriş yapan: ${user.login}`; showView('dashboard-view'); await loadPosts(); }
-        catch (error) { state.token = null; message('login-message', error.message, 'alert-error'); }
-      }
-      $('login').addEventListener('click', login); $('new-post').addEventListener('click', () => openEditor()); $('back').addEventListener('click', () => showView('dashboard-view'));
-      $('post-form').addEventListener('submit', savePost); $('delete-post').addEventListener('click', deletePost);
-      $('logout').addEventListener('click', () => { localStorage.removeItem('blog-admin-token'); state.token = null; $('token').value = ''; showView('login-view'); });
-      if (state.token) { $('token').value = state.token; login(); }
-    </script>
-  </body>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>İçerik Yönetim Paneli</title>
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+</head>
+<body>
+<!-- Netlify CMS Script -->
+<script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
+<script>
+if (window.netlifyIdentity) {
+window.netlifyIdentity.on("init", user => {
+if (!user) {
+window.netlifyIdentity.on("login", () => {
+document.location.reload();
+});
+}
+});
+}
+</script>
+</body>
 </html>
+
+
